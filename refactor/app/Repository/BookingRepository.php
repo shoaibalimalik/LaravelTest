@@ -97,7 +97,7 @@ class BookingRepository extends BaseRepository
         } else {
             $pagenum = "1";
         }
-        $cuser = User::find($user_id);
+        $cuser = User::findOrFail($user_id);
         $usertype = '';
         $emergencyJobs = array();
         $noramlJobs = array();
@@ -133,6 +133,7 @@ class BookingRepository extends BaseRepository
         if ($user->user_type == env('CUSTOMER_ROLE_ID')) {
             $cuser = $user;
 
+            // with validation in place in controller these are not required
             if (!isset($data['from_language_id'])) {
                 $response['status'] = 'fail';
                 $response['message'] = "Du måste fylla in alla fält";
@@ -383,7 +384,7 @@ class BookingRepository extends BaseRepository
     {
         $completeddate = date('Y-m-d H:i:s');
         $jobid = $post_data["job_id"];
-        $job_detail = Job::with('translatorJobRel')->find($jobid);
+        $job_detail = Job::with('translatorJobRel')->findOrFail($jobid);
         $duedate = $job_detail->due;
         $start = date_create($duedate);
         $end = date_create($completeddate);
@@ -1661,7 +1662,7 @@ class BookingRepository extends BaseRepository
     {
         $completeddate = date('Y-m-d H:i:s');
         $jobid = $post_data["job_id"];
-        $job_detail = Job::with('translatorJobRel')->find($jobid);
+        $job_detail = Job::with('translatorJobRel')->findOrFail($jobid);
         $duedate = $job_detail->due;
         $start = date_create($duedate);
         $end = date_create($completeddate);

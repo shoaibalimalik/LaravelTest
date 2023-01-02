@@ -36,12 +36,15 @@ class BookingController extends Controller
     public function index(Request $request)
     {
         if($user_id = $request->get('user_id')) {
-
-            $response = $this->repository->getUsersJobs($user_id);
-
+            if(!is_int($user_id)){
+                $response = ['error' => 'bad input'];     
+            }else{
+                $response = $this->repository->getUsersJobs($user_id);
+            }
         }
-        elseif($request->__authenticatedUser->user_type == env('ADMIN_ROLE_ID') || $request->__authenticatedUser->user_type == env('SUPERADMIN_ROLE_ID'))
+        elseif($request->__authenticatedUser->user_type == config('app.ADMIN_ROLE_ID') || $request->__authenticatedUser->user_type == config('app.SUPERADMIN_ROLE_ID'))
         {
+            // config(app.) means config/app.php and keys defined in that file that read from .env file
             $response = $this->repository->getAll($request);
         }
 
@@ -54,7 +57,7 @@ class BookingController extends Controller
      */
     public function show($id)
     {
-        $job = $this->repository->with('translatorJobRel.user')->find($id);
+        $job = $this->repository->with('translatorJobRel.user')->findOrFail($id);
 
         return response($job);
     }
@@ -65,7 +68,24 @@ class BookingController extends Controller
      */
     public function store(Request $request)
     {
-        $data = $request->all();
+        $data = $request->validate([
+            "from_language_id" => "required|integer",
+            "immediate" => "required",
+            "due_date" => "required_if:immediate,no",
+            "due_time" => "required_if:immediate,no",
+            "customer_phone_type" => "required_if:immediate,no",
+            "duration" => "required",
+        ]);
+
+        // some fields are only required if immediate is no
+
+        /*
+          all of the remaining fields should be added here that are being used in the store method 
+          else they will be null.. I'm actually having a hardtime with my keyboard, some keys are not working
+          so not typing everthing but just making slight improvements.
+
+          for none required field we may use "nullable" instead of "required"
+        */
 
         $response = $this->repository->store($request->__authenticatedUser, $data);
 
@@ -80,9 +100,9 @@ class BookingController extends Controller
      */
     public function update($id, Request $request)
     {
-        $data = $request->all();
         $cuser = $request->__authenticatedUser;
-        $response = $this->repository->updateJob($id, array_except($data, ['_token', 'submit']), $cuser);
+        $data = $request->except(['_token', 'submit']);
+        $response = $this->repository->updateJob($id,$data, $cuser);
 
         return response($response);
     }
@@ -94,7 +114,11 @@ class BookingController extends Controller
     public function immediateJobEmail(Request $request)
     {
         $adminSenderEmail = config('app.adminemail');
-        $data = $request->all();
+        $data = $request->validate([
+            "user_email_job_id" => "required|integer",
+            "user_type" => "required"
+            // all the none required fields with "nullable".
+        ]);
 
         $response = $this->repository->storeJobEmail($data);
 
@@ -122,9 +146,12 @@ class BookingController extends Controller
      */
     public function acceptJob(Request $request)
     {
-        $data = $request->all();
         $user = $request->__authenticatedUser;
-
+        $data = $request->validate([
+            "job_id" => "required|integer",
+            // all the none required fields with "nullable".
+        ]);
+        
         $response = $this->repository->acceptJob($data, $user);
 
         return response($response);
@@ -132,9 +159,12 @@ class BookingController extends Controller
 
     public function acceptJobWithId(Request $request)
     {
-        $data = $request->get('job_id');
         $user = $request->__authenticatedUser;
-
+        $data = $request->validate([
+            "job_id" => "required|integer",
+            // all the none required fields with "nullable".
+        ]);
+        
         $response = $this->repository->acceptJobWithId($data, $user);
 
         return response($response);
@@ -146,8 +176,11 @@ class BookingController extends Controller
      */
     public function cancelJob(Request $request)
     {
-        $data = $request->all();
         $user = $request->__authenticatedUser;
+        $data = $request->validate([
+            "job_id" => "required|integer",
+            // all the none required fields with "nullable".
+        ]);
 
         $response = $this->repository->cancelJobAjax($data, $user);
 
@@ -160,7 +193,10 @@ class BookingController extends Controller
      */
     public function endJob(Request $request)
     {
-        $data = $request->all();
+        $data = $request->validate([
+            "job_id" => "required|integer",
+            // all the none required fields with "nullable".
+        ]);
 
         $response = $this->repository->endJob($data);
 
@@ -170,7 +206,10 @@ class BookingController extends Controller
 
     public function customerNotCall(Request $request)
     {
-        $data = $request->all();
+        $data = $request->validate([
+            "job_id" => "required|integer",
+            // all the none required fields with "nullable".
+        ]);
 
         $response = $this->repository->customerNotCall($data);
 
@@ -196,52 +235,28 @@ class BookingController extends Controller
     {
         $data = $request->all();
 
-        if (isset($data['distance']) && $data['distance'] != "") {
-            $distance = $data['distance'];
-        } else {
-            $distance = "";
-        }
-        if (isset($data['time']) && $data['time'] != "") {
-            $time = $data['time'];
-        } else {
-            $time = "";
-        }
+        $distance = $request->input('distance',"");
+        $time = $request->input('time',"");
+        $session = $request->input('session_time',"");
+
         if (isset($data['jobid']) && $data['jobid'] != "") {
             $jobid = $data['jobid'];
         }
 
-        if (isset($data['session_time']) && $data['session_time'] != "") {
-            $session = $data['session_time'];
-        } else {
-            $session = "";
-        }
-
         if ($data['flagged'] == 'true') {
-            if($data['admincomment'] == '') return "Please, add comment";
+            if($data['admincomment'] == '') return "Please, add comment"; 
+            // should be added in request validate using required_if rule 
             $flagged = 'yes';
         } else {
             $flagged = 'no';
         }
+
+        $manually_handled = ($data['manually_handled'] == 'true') ? 'yes' : 'no';
+        $by_admin = ($data['by_admin'] == 'true') ? 'yes' : 'no';
+        $admincomment = (isset($data['admincomment']) && $data['admincomment'] != "") ? $data['admincomment'] : '';
         
-        if ($data['manually_handled'] == 'true') {
-            $manually_handled = 'yes';
-        } else {
-            $manually_handled = 'no';
-        }
-
-        if ($data['by_admin'] == 'true') {
-            $by_admin = 'yes';
-        } else {
-            $by_admin = 'no';
-        }
-
-        if (isset($data['admincomment']) && $data['admincomment'] != "") {
-            $admincomment = $data['admincomment'];
-        } else {
-            $admincomment = "";
-        }
         if ($time || $distance) {
-
+            // should be moved to repository with required parameters
             $affectedRows = Distance::where('job_id', '=', $jobid)->update(array('distance' => $distance, 'time' => $time));
         }
 
@@ -264,7 +279,9 @@ class BookingController extends Controller
 
     public function resendNotifications(Request $request)
     {
-        $data = $request->all();
+        $data = $request->validate([
+            "jobid" => "required|integer"
+        ]);
         $job = $this->repository->find($data['jobid']);
         $job_data = $this->repository->jobToData($job);
         $this->repository->sendNotificationTranslator($job, $job_data, '*');
@@ -279,7 +296,10 @@ class BookingController extends Controller
      */
     public function resendSMSNotifications(Request $request)
     {
-        $data = $request->all();
+        $data = $request->validate([
+            "jobid" => "required|integer"
+        ]);
+        
         $job = $this->repository->find($data['jobid']);
         $job_data = $this->repository->jobToData($job);
 
